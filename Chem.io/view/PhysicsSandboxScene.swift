@@ -70,8 +70,8 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         boundary.name = "boundary"
         boundary.physicsBody = SKPhysicsBody(edgeLoopFrom: self.frame)
         boundary.physicsBody?.categoryBitMask = PhysicsCategory.boundary
-        boundary.physicsBody?.friction = 0.2
-        boundary.physicsBody?.restitution = 0.5
+        boundary.physicsBody?.friction = 0.5
+        boundary.physicsBody?.restitution = 0.1
         addChild(boundary)
     }
     
@@ -150,10 +150,10 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         // Physics body
         let body = SKPhysicsBody(circleOfRadius: element.radius)
         body.mass = element.mass * 0.01 // Scale down mass for reasonable physics
-        body.restitution = 0.8          // Bounciness
-        body.friction = 0.3
-        body.linearDamping = 0.5
-        body.angularDamping = 0.5
+        body.restitution = 0.3          // Lower bounciness
+        body.friction = 0.6
+        body.linearDamping = 2.0        // Higher damping to settle faster
+        body.angularDamping = 2.0
         body.categoryBitMask = PhysicsCategory.element
         body.contactTestBitMask = PhysicsCategory.element | PhysicsCategory.molecule
         body.collisionBitMask = PhysicsCategory.element | PhysicsCategory.boundary | PhysicsCategory.molecule
@@ -209,10 +209,10 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         let body = SKPhysicsBody(circleOfRadius: molecule.radius)
         let totalMass = molecule.components.reduce(CGFloat(0)) { $0 + ($1.key.mass * CGFloat($1.value)) }
         body.mass = totalMass * 0.01
-        body.restitution = 0.6
-        body.friction = 0.4
-        body.linearDamping = 0.6
-        body.angularDamping = 0.6
+        body.restitution = 0.2
+        body.friction = 0.7
+        body.linearDamping = 0.3
+        body.angularDamping = 0.3
         body.categoryBitMask = PhysicsCategory.molecule
         body.contactTestBitMask = PhysicsCategory.element | PhysicsCategory.molecule
         body.collisionBitMask = PhysicsCategory.element | PhysicsCategory.boundary | PhysicsCategory.molecule
@@ -366,7 +366,7 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         let nx = dx / distance
         let ny = dy / distance
         
-        let baseForce: CGFloat = 15.0
+        let baseForce: CGFloat = 6.0
         
         bodyA.applyImpulse(CGVector(dx: nx * baseForce * restitutionA, dy: ny * baseForce * restitutionA))
         bodyB.applyImpulse(CGVector(dx: -nx * baseForce * restitutionB, dy: -ny * baseForce * restitutionB))

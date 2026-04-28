@@ -13,7 +13,6 @@ struct ElementPickerView: View {
                     ForEach(Element.allCases) { element in
                         Button {
                             viewModel.spawnElement(element)
-                            dismiss()
                         } label: {
                             ElementGridItem(element: element)
                         }
