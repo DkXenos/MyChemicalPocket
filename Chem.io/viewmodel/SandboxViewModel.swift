@@ -39,7 +39,6 @@ class SandboxViewModel {
     }
     
     /// Spawns an element at the top-center of the scene with slight random offset.
-    /// Called from the ElementDrawerView when a user taps an element button.
     func spawnElement(_ element: Element) {
         scene.spawnElement(element)
     }

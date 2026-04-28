@@ -13,66 +13,30 @@ import SpriteKit
 struct ContentView: View {
     
     @State private var viewModel = SandboxViewModel()
-    @State private var isDrawerOpen = false
-    @GestureState private var dragOffset: CGFloat = 0
+    @State private var showElementPicker = true
     
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             // SpriteKit physics sandbox (full screen)
             SpriteView(scene: viewModel.scene)
                 .ignoresSafeArea()
             
-            // UI overlay: Top Bar
-            VStack(spacing: 0) {
-                topBar
-                Spacer()
-            }
-            .zIndex(1)
-            
-            // Top element drawer
-            VStack(spacing: 0) {
-                ElementDrawerView(viewModel: viewModel)
-                
-                // Rope / Pull Handle
+            // UI overlay: Top Bar avoiding Dynamic Island
+            GeometryReader { geometry in
                 VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Color(white: 0.8))
-                        .frame(width: 4, height: 60)
-                    Circle()
-                        .fill(Color(white: 0.8))
-                        .frame(width: 16, height: 16)
+                    topBar
+                        .padding(.top, max(geometry.safeAreaInsets.top, 16))
+                    Spacer()
                 }
-                .contentShape(Rectangle()) // Make it easily draggable
-                .padding(.top, -4)
             }
-            .offset(y: isDrawerOpen ? 0 : -150) // hide off-screen when closed
-            .offset(y: dragOffset)
-            .gesture(
-                DragGesture()
-                    .updating($dragOffset) { value, state, _ in
-                        let translation = value.translation.height
-                        if isDrawerOpen {
-                            state = min(0, translation)
-                        } else {
-                            state = max(0, min(150, translation))
-                        }
-                    }
-                    .onEnded { value in
-                        let threshold: CGFloat = 40
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            if isDrawerOpen {
-                                if value.translation.height < -threshold {
-                                    isDrawerOpen = false
-                                }
-                            } else {
-                                if value.translation.height > threshold {
-                                    isDrawerOpen = true
-                                }
-                            }
-                        }
-                    }
-            )
-            .zIndex(2)
+            .ignoresSafeArea(.container, edges: .top)
+            .zIndex(1)
+        }
+        .sheet(isPresented: $showElementPicker) {
+            ElementPickerView(viewModel: viewModel)
+                .presentationDetents([.height(150), .medium])
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .interactiveDismissDisabled(false)
         }
         #if os(iOS)
         .statusBarHidden(false)
@@ -125,22 +89,42 @@ struct ContentView: View {
             
             Spacer()
             
-            // Clear canvas button
-            Button {
-                viewModel.clearCanvas()
-            } label: {
-                Image(systemName: "trash.circle.fill")
-                    .font(.system(size: 22))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundColor(.red.opacity(0.8))
+            // Action Buttons
+            HStack(spacing: 12) {
+                // Add element button
+                Button {
+                    showElementPicker.toggle()
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundColor(.green.opacity(0.8))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
+                )
+                
+                // Clear canvas button
+                Button {
+                    viewModel.clearCanvas()
+                } label: {
+                    Image(systemName: "trash.circle.fill")
+                        .font(.system(size: 22))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundColor(.red.opacity(0.8))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
+                )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-            )
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
