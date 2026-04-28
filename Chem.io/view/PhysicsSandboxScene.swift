@@ -155,13 +155,14 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         body.linearDamping = 0.5
         body.angularDamping = 0.5
         body.categoryBitMask = PhysicsCategory.element
-        body.contactTestBitMask = PhysicsCategory.element
+        body.contactTestBitMask = PhysicsCategory.element | PhysicsCategory.molecule
         body.collisionBitMask = PhysicsCategory.element | PhysicsCategory.boundary | PhysicsCategory.molecule
         node.physicsBody = body
         
         // Store element data in userData for retrieval during collisions
         node.userData = NSMutableDictionary()
         node.userData?["element"] = element.rawValue
+        node.userData?["components"] = [element: 1]
         
         return node
     }
@@ -206,15 +207,19 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         
         // Physics body
         let body = SKPhysicsBody(circleOfRadius: molecule.radius)
-        body.mass = molecule.components.reduce(0) { $0 + $1.mass } * 0.01
+        let totalMass = molecule.components.reduce(CGFloat(0)) { $0 + ($1.key.mass * CGFloat($1.value)) }
+        body.mass = totalMass * 0.01
         body.restitution = 0.6
         body.friction = 0.4
         body.linearDamping = 0.6
         body.angularDamping = 0.6
         body.categoryBitMask = PhysicsCategory.molecule
-        body.contactTestBitMask = PhysicsCategory.none
+        body.contactTestBitMask = PhysicsCategory.element | PhysicsCategory.molecule
         body.collisionBitMask = PhysicsCategory.element | PhysicsCategory.boundary | PhysicsCategory.molecule
         node.physicsBody = body
+        
+        node.userData = NSMutableDictionary()
+        node.userData?["components"] = molecule.components
         
         return node
     }
@@ -309,79 +314,62 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
         let nodeA = contact.bodyA.node
         let nodeB = contact.bodyB.node
         
-        // Only process element-element collisions
-        guard let a = nodeA, let b = nodeB,
-              let nameA = a.name, nameA.hasPrefix("element_"),
-              let nameB = b.name, nameB.hasPrefix("element_"),
-              a.parent != nil, b.parent != nil else {
-            return
-        }
+        guard let a = nodeA, let b = nodeB, a.parent != nil, b.parent != nil else { return }
         
-        // Don't process if either node is being dragged
+        // Ignore dragging nodes
         if a == selectedNode || b == selectedNode { return }
         
-        // Calculate midpoint of collision
+        // Ensure both are reactable (element or molecule)
+        let isAReactable = (a.name?.hasPrefix("element_") == true || a.name?.hasPrefix("molecule_") == true)
+        let isBReactable = (b.name?.hasPrefix("element_") == true || b.name?.hasPrefix("molecule_") == true)
+        guard isAReactable && isBReactable else { return }
+        
+        let componentsA = a.userData?["components"] as? [Element: Int] ?? [:]
+        let componentsB = b.userData?["components"] as? [Element: Int] ?? [:]
+        
+        // Combine components
+        var combined = componentsA
+        for (el, count) in componentsB {
+            combined[el, default: 0] += count
+        }
+        
+        let key = ReactionManager.shared.generateKey(components: combined)
+        
         let midPoint = CGPoint(
             x: (a.position.x + b.position.x) / 2,
             y: (a.position.y + b.position.y) / 2
         )
         
-        // Gather all nearby element nodes within the fusion proximity
-        let nearbyElements = gatherNearbyElements(around: midPoint, excluding: [])
-        
-        // Try increasingly larger subsets of nearby elements for reactions
-        attemptFusion(with: nearbyElements, at: midPoint)
+        if let molecule = ReactionManager.shared.reactions[key] {
+            // Fusion Match
+            performFusion(molecule: molecule, involvedNodes: [a, b], at: midPoint)
+        } else {
+            // No Match: Repel
+            repelNodes(a, b, componentsA: componentsA, componentsB: componentsB)
+        }
     }
     
-    /// Gathers all element nodes within the fusion proximity radius of a point.
-    private func gatherNearbyElements(around point: CGPoint, excluding: Set<SKNode>) -> [SKNode] {
-        var nearby: [SKNode] = []
+    private func repelNodes(_ a: SKNode, _ b: SKNode, componentsA: [Element: Int], componentsB: [Element: Int]) {
+        guard let bodyA = a.physicsBody, let bodyB = b.physicsBody else { return }
         
-        for node in elementNodes {
-            if excluding.contains(node) { continue }
-            if node.parent == nil { continue }
-            
-            let distance = hypot(node.position.x - point.x, node.position.y - point.y)
-            if distance <= fusionProximityRadius {
-                nearby.append(node)
-            }
-        }
+        // Calculate restitution based on Noble Gases
+        let isANoble = componentsA.keys.contains { $0 == .helium || $0 == .neon }
+        let isBNoble = componentsB.keys.contains { $0 == .helium || $0 == .neon }
+        let restitutionA: CGFloat = isANoble ? 1.0 : 0.5
+        let restitutionB: CGFloat = isBNoble ? 1.0 : 0.5
         
-        return nearby
-    }
-    
-    /// Attempts to fuse a collection of nearby elements into a molecule.
-    private func attemptFusion(with nodes: [SKNode], at position: CGPoint) {
-        guard nodes.count >= 2 else { return }
+        // Apply immediate impulse to push apart
+        let dx = a.position.x - b.position.x
+        let dy = a.position.y - b.position.y
+        let distance = max(hypot(dx, dy), 1.0)
         
-        // Extract elements from nodes
-        let elementsWithNodes: [(node: SKNode, element: Element)] = nodes.compactMap { node in
-            guard let rawValue = node.userData?["element"] as? String,
-                  let element = Element(rawValue: rawValue) else {
-                return nil
-            }
-            return (node, element)
-        }
+        let nx = dx / distance
+        let ny = dy / distance
         
-        let elements = elementsWithNodes.map { $0.element }
+        let baseForce: CGFloat = 15.0
         
-        // Try the full set first, then smaller subsets
-        // Check full set
-        if let molecule = ReactionDatabase.checkReaction(elements: elements) {
-            performFusion(molecule: molecule, involvedNodes: elementsWithNodes.map { $0.node }, at: position)
-            return
-        }
-        
-        // Try all subsets of size 2...n-1 (sorted by size descending to find largest reaction)
-        for size in stride(from: elements.count - 1, through: 2, by: -1) {
-            for combo in combinations(of: elementsWithNodes, choosing: size) {
-                let comboElements = combo.map { $0.element }
-                if let molecule = ReactionDatabase.checkReaction(elements: comboElements) {
-                    performFusion(molecule: molecule, involvedNodes: combo.map { $0.node }, at: position)
-                    return
-                }
-            }
-        }
+        bodyA.applyImpulse(CGVector(dx: nx * baseForce * restitutionA, dy: ny * baseForce * restitutionA))
+        bodyB.applyImpulse(CGVector(dx: -nx * baseForce * restitutionB, dy: -ny * baseForce * restitutionB))
     }
     
     /// Performs the fusion: removes element nodes and spawns a molecule node.
@@ -391,13 +379,17 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
             elementNodes.remove(node)
             
             // Shrink animation before removal
-            let shrink = SKAction.scale(to: 0, duration: 0.2)
+            let shrink = SKAction.scale(to: 0, duration: 0.1)
             let remove = SKAction.removeFromParent()
             node.run(SKAction.sequence([shrink, remove]))
+            
+            // Avoid duplicate contacts
+            node.physicsBody?.contactTestBitMask = PhysicsCategory.none
+            node.physicsBody?.collisionBitMask = PhysicsCategory.none
         }
         
-        // Spawn molecule after a brief delay (for visual effect)
-        let wait = SKAction.wait(forDuration: 0.25)
+        // Spawn molecule after a brief delay
+        let wait = SKAction.wait(forDuration: 0.15)
         run(wait) { [weak self] in
             guard let self = self else { return }
             
@@ -475,20 +467,4 @@ class PhysicsSandboxScene: SKScene, SKPhysicsContactDelegate {
             .forEach { $0.removeFromParent() }
     }
     
-    // MARK: - Utility
-    
-    /// Generates all combinations of `k` items from an array.
-    private func combinations<T>(of array: [T], choosing k: Int) -> [[T]] {
-        guard k > 0, k <= array.count else { return [] }
-        if k == array.count { return [array] }
-        if k == 1 { return array.map { [$0] } }
-        
-        var result: [[T]] = []
-        for (index, element) in array.enumerated() {
-            let remaining = Array(array[(index + 1)...])
-            let subCombos = combinations(of: remaining, choosing: k - 1)
-            result += subCombos.map { [element] + $0 }
-        }
-        return result
-    }
 }
