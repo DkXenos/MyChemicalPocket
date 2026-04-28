@@ -13,23 +13,66 @@ import SpriteKit
 struct ContentView: View {
     
     @State private var viewModel = SandboxViewModel()
+    @State private var isDrawerOpen = false
+    @GestureState private var dragOffset: CGFloat = 0
     
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             // SpriteKit physics sandbox (full screen)
             SpriteView(scene: viewModel.scene)
                 .ignoresSafeArea()
             
-            // UI overlay
+            // UI overlay: Top Bar
             VStack(spacing: 0) {
-                // Top bar with molecule counter and clear button
                 topBar
-                
                 Spacer()
-                
-                // Bottom element drawer
-                ElementDrawerView(viewModel: viewModel)
             }
+            .zIndex(1)
+            
+            // Top element drawer
+            VStack(spacing: 0) {
+                ElementDrawerView(viewModel: viewModel)
+                
+                // Rope / Pull Handle
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(Color(white: 0.8))
+                        .frame(width: 4, height: 60)
+                    Circle()
+                        .fill(Color(white: 0.8))
+                        .frame(width: 16, height: 16)
+                }
+                .contentShape(Rectangle()) // Make it easily draggable
+                .padding(.top, -4)
+            }
+            .offset(y: isDrawerOpen ? 0 : -150) // hide off-screen when closed
+            .offset(y: dragOffset)
+            .gesture(
+                DragGesture()
+                    .updating($dragOffset) { value, state, _ in
+                        let translation = value.translation.height
+                        if isDrawerOpen {
+                            state = min(0, translation)
+                        } else {
+                            state = max(0, min(150, translation))
+                        }
+                    }
+                    .onEnded { value in
+                        let threshold: CGFloat = 40
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            if isDrawerOpen {
+                                if value.translation.height < -threshold {
+                                    isDrawerOpen = false
+                                }
+                            } else {
+                                if value.translation.height > threshold {
+                                    isDrawerOpen = true
+                                }
+                            }
+                        }
+                    }
+            )
+            .zIndex(2)
         }
         #if os(iOS)
         .statusBarHidden(false)

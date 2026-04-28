@@ -20,12 +20,6 @@ struct ElementDrawerView: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            // Drawer handle indicator
-            Capsule()
-                .fill(Color.white.opacity(0.3))
-                .frame(width: 40, height: 4)
-                .padding(.top, 8)
-            
             // Element buttons scroll view
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
@@ -39,17 +33,17 @@ struct ElementDrawerView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
             }
             .scrollIndicators(.hidden)
         }
         .background(
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: 24)
                 .fill(.ultraThinMaterial)
                 .environment(\.colorScheme, .dark)
         )
         .padding(.horizontal, 8)
-        .padding(.bottom, 4)
+        .padding(.top, 40) // padding to account for safe area when fully open
     }
     
     /// Spawn element and trigger feedback
